@@ -807,7 +807,7 @@ footer{
 <main class="page" id="top">
 <section class="hero">
 <h1><span class="title-line">The Right Semantics at the Right Time:</span><br class="title-break"/><span class="title-line">Adaptive Inference for Semantic-Faithful Video Diffusion</span></h1>
-<p class="subtitle">A two-stage video inference framework that aligns semantic granularity with the denoising trajectory through prompt-adaptive switching, noise-aware sampling reallocation, and a stable coarse-to-refined latent transition.</p>
+<p class="subtitle">Standard inference asks one conditioning regime and one timestep allocation to serve different generative responsibilities across the denoising trajectory. Our framework instead couples semantic granularity with where the sampling budget is spent, enabling coarse scene organization and fine-grained constraint realization to receive stage-appropriate support while preserving a stable generative trajectory.</p>
   <!--
 <article class="teaser reveal">
 <div class="video wide">
@@ -828,86 +828,49 @@ footer{
 <div class="section-head"> <h2>Method Overview</h2>
 </div>
 <figure class="card method-figure reveal">
-<img alt="Two-stage staged-semantics inference from coarse scene formation to fine-grained refinement" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';" src="assets/images/overview.png"/>
+<img alt="Adaptive two-stage video diffusion inference with semantic-gap-adaptive prompt scheduling, two-stage sampling-budget reallocation, and coarse-to-fine transition guidance" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';" src="assets/images/overview.png"/>
 <div class="figure-fallback" style="display:none;">Place method overview image here<br/>assets/images/overview.png</div>
-<figcaption>The framework begins by deriving a coarse condition from the input prompt, retaining
-    the primary objects, spatial layout, and global motion needed to organize the scene.
-    The semantic difference between the coarse and full prompts determines how long this
-    formation stage should last: prompts containing more additional fine-grained content
-    switch earlier so that more of the remaining trajectory can respond to it. Early
-    sampling emphasizes the high-noise portion of the trajectory, where global organization
-    is still flexible. Before the full prompt takes over, CRTG converts the intermediate
-    latent into a stable state compatible with continued fine-grained denoising. The second
-    stage then emphasizes low-noise updates to realize local events, appearance attributes,
-    and background details without discarding the coarse configuration already established.</figcaption>
+<figcaption>The framework organizes a single denoising trajectory into two complementary semantic stages. A coarse textual proxy derived from the input prompt retains primary objects, spatial layout, global motion, and other coarse-grained semantics, while the original prompt remains the final semantic target. Semantic-Gap-Adaptive Prompt Scheduling determines when generation should move from coarse semantic establishment to fine-grained realization according to how much additional semantic content is present in the original prompt. The first stage uses denser high-noise updates to establish the main scene configuration. At the stage boundary, Coarse-to-Fine Transition Guidance uses the prediction difference between the two text conditions to guide the intermediate latent toward a higher-noise state that can accommodate the additional semantics without discarding the coarse configuration already formed. The second stage then uses denser low-noise updates under the original prompt to realize local events, appearance attributes, background details, and other fine-grained constraints.</figcaption>
 </figure>
 <div class="method-compact">
 <article class="card method-card reveal">
-<h3 class="contrib-heading"><span class="contrib-index">Ⅰ</span><span class="contrib-name">Coarse-to-Fine Two-Stage Generation</span></h3>
+<h3 class="contrib-heading"><span class="contrib-index">Ⅰ</span><span class="contrib-name">Adaptive Two-Stage Inference Framework</span></h3>
 <div class="flow-row prompt-flow">
 <div class="pill">input prompt p</div>
 <div class="arrow">→</div>
-<div class="pill">coarse prompt c</div>
+<div class="pill">coarse textual proxy c</div>
 </div>
-<p style="margin-top:.72rem;">Instead of applying the complete prompt uniformly throughout denoising, the method
-    assigns complementary responsibilities to two text conditions. A coarse proxy distilled
-    from the input prompt guides the early formation of primary objects, spatial layout, and
-    global motion. The original prompt remains the final semantic target and is introduced
-    later to realize local events, appearance attributes, background details, and other
-    fine-grained constraints.</p>
+<p style="margin-top:.72rem;">From the original input prompt p, a language model derives a coarse textual proxy c that retains primary objects, spatial layout, global motion, and other coarse-grained semantics while omitting local events, appearance attributes, background details, and overly specific modifiers. The first stage pairs c with denser high-noise sampling, where the latent remains highly flexible for establishing the main scene configuration. The second stage pairs p with denser low-noise sampling, where updates act more directly on local interactions, appearance, and background details. In this way, the semantic responsibility of each stage is matched to the region of the denoising trajectory that provides the most suitable sampling support.</p>
 </article>
 <article class="card flow reveal">
 <h3 class="contrib-heading"><span class="contrib-index">Ⅱ</span><span class="contrib-name">Semantic-Gap-Adaptive Prompt Scheduling</span></h3>
 <div class="formula">g = 1 − cos(E(c), E(p))</div>
-<p class="gap-note">The transition is determined separately for each prompt rather than fixed globally.
-    The semantic gap estimates how much information the full prompt adds beyond the coarse
-    proxy. A larger gap moves the switch earlier and reserves more subsequent updates for
-    the additional constraints; a smaller gap keeps coarse semantic formation active for
-    longer. The transition range is bounded so that both stages retain sufficient sampling
-    support.</p>
+<p class="gap-note">This module determines the switching point from the coarse textual proxy c to the original input prompt p for each input. Here, E(·) denotes the text embedding model, and E(c) and E(p) are the sentence-level embeddings of c and p, respectively. Their cosine similarity cos(E(c), E(p)) measures how closely the two text conditions are aligned, and the semantic gap g = 1 − cos(E(c), E(p)) is used as a relative proxy for the semantic increment from c to p. A larger g indicates a greater semantic increment and therefore moves the switch earlier, leaving more of the remaining denoising trajectory for the additional constraints in p; a smaller g keeps the coarse stage active for longer. We clip g to a predefined effective range and bound the mapped coarse-stage ratio to prevent extreme similarity estimates from producing an excessively early or late transition, which could make either denoising stage impractically short.</p>
 </article>
 <article class="card method-card reveal">
-<h3 class="contrib-heading"><span class="contrib-index">Ⅳ</span><span class="contrib-name">Coarse-to-Refined Transition Guidance</span></h3>
-<p>When the condition changes, the current latent still reflects the trajectory formed
-    under the coarse prompt. Directly continuing with the full prompt can create a mismatch
-    between that latent state and the remaining denoising process. CRTG combines the
-    coarse-conditioned direction with the semantic increment introduced by the full prompt
-    to construct a transition direction suited to the next stage.</p>
-<div class="formula">d<sub>crtg</sub> = d<sub>c</sub> + λ<sub>crtg</sub>(d<sub>p</sub> − d<sub>c</sub>)</div>
-<p style="margin-top:.72rem;">The resulting transition latent serves as a stable starting point for fine-grained
-    sampling. It retains the primary objects, layout, and global motion already formed while
-    placing the latent in a state where the remaining updates can still express local events,
-    appearance attributes, and background details. This coordinated transition reduces the
-    instability and visual collapse that can follow an abrupt prompt switch.</p>
+<h3 class="contrib-heading"><span class="contrib-index">Ⅲ</span><span class="contrib-name">Coarse-to-Fine Transition Guidance</span></h3>
+<div class="formula">v<sub>guided</sub> = v<sub>c</sub> + λ(v<sub>p</sub> − v<sub>c</sub>)</div>
+<p>At the switching boundary, the current latent has already followed a denoising trajectory shaped by the coarse textual proxy c, so directly replacing c with the original input prompt p can make the new conditional updates incompatible with the current state. Let v denote the model prediction that determines the text-conditioned latent update at a given latent state and noise level. Evaluating the same state under c and p gives v_c and v_p, respectively, and their difference v_p − v_c captures the change in the denoising update induced by the additional semantics in p. The guidance scale λ controls the strength of this conditional increment. Coarse-to-Fine Transition Guidance uses the resulting guided update to steer a controlled transition toward higher noise, where the latent regains flexibility for fine-grained realization.</p>
 </article>
 </div>
 <article class="card sampling-card reveal">
 <div>
-<h3 class="contrib-heading"><span class="contrib-index">Ⅲ</span><span class="contrib-name">Sampling-Budget Reallocation</span></h3>
-<p>The method reallocates the existing sampling budget instead of adding more denoising
-    steps. During coarse formation, more updates are placed in the high-noise region, where
-    primary objects, spatial layout, and global motion remain easier to reshape. During
-    fine-grained refinement, more updates are placed in the low-noise region, where local
-    interactions, appearance, and background details become visible. The transformation
-    preserves the number and order of timesteps, giving each semantic stage denser support
-    in the noise region where it is most effective without increasing the total inference
-    cost.</p>
-<div class="flow-row prompt-flow" style="margin-top:.75rem;">
-<div class="pill">high-noise emphasis</div>
+<h3 class="contrib-heading"><span class="contrib-index">Ⅳ</span><span class="contrib-name">Sampling-Budget Reallocation for Two-Stage Inference</span></h3>
+<div class="flow-row prompt-flow" style="margin-bottom:.75rem;">
+<div class="pill">Stage 1 · denser high-noise updates</div>
 <div class="arrow">→</div>
-<div class="pill">low-noise emphasis</div>
-</div>
-<div class="sampling-formula">φ<sub>r</sub>(t) = rt / (1 + (r − 1)t)</div>
+<div class="pill">Stage 2 · denser low-noise updates</div>
+</div><p>This module redistributes a fixed set of sampling timesteps so that each semantic stage receives denser updates in the noise region most relevant to its role. In the first stage, more sampling points are placed toward high noise, where the latent remains highly malleable and denoising under the coarse textual proxy can establish primary objects, spatial layout, and global motion. In the second stage, more sampling points are placed toward low noise, where denoising under the original prompt acts more directly on local events, appearance attributes, background details, and other fine-grained content. The reallocation preserves the number and order of timesteps, redistributing the same inference budget rather than increasing the number of model evaluations.</p>
 </div>
 <div class="sampling-figure">
-<img alt="Sampling-budget reallocation emphasizing high-noise updates for structure and low-noise updates for detail" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" src="assets/images/Sample_Reallocation.png"/>
+<img alt="Two-stage sampling-budget reallocation with denser high-noise updates for coarse semantic establishment and denser low-noise updates for fine-grained constraint realization" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" src="assets/images/Sample_Reallocation.png"/>
 <span style="display:none;">Place sampling reallocation figure here<br/>assets/images/Sample_Reallocation.png</span>
 </div>
 </article>
 </section>
 <section class="section" id="comparisons">
 <div class="section-head"> <h2>Baseline vs. Ours</h2>
-<p>Within each backbone, conventional inference and the proposed staged inference are compared under the same prompt across six semantic criteria. Overall win rates reach 53.6% on Wan2.2-5B and 58.0% on CogVideoX-5B.</p>
+<p>Within each backbone, single-stage input-prompt inference and adaptive two-stage inference are compared under the same prompt across six semantic criteria.</p>
 </div>
 <div class="model-block">
 <h3 class="model-heading">Wan2.2-5B</h3>
@@ -933,7 +896,7 @@ footer{
 <div class="pair"><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Wan/model_wan_appearance_baseline.mp4" type="video/mp4"/></video><figcaption><span class="baseline-label">Baseline</span></figcaption></figure><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Wan/model_wan_appearance_ours.mp4" type="video/mp4"/></video><figcaption><span class="ours-label">Ours</span></figcaption></figure></div>
 </article>
 <article class="card comparison-row reveal">
-<div class="comparison-label"><span class="num">06</span><div><h3>Background details</h3><p>Evaluates contextual elements and scene details beyond the primary objects.</p><div class="prompt-box"><strong>Prompt:</strong> A black dog runs happily across <strong class="hl">a yellow grassy field, with a clear blue sky and some trees in the background.</strong></div></div></div>
+<div class="comparison-label"><span class="num">06</span><div><h3>Background details</h3><p>Evaluates whether prompt-specified background elements and environmental details surrounding the primary content are correctly realized.</p><div class="prompt-box"><strong>Prompt:</strong> A black dog runs happily across <strong class="hl">a yellow grassy field, with a clear blue sky and some trees in the background.</strong></div></div></div>
 <div class="pair"><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Wan/model_wan_background_baseline.mp4" type="video/mp4"/></video><figcaption><span class="baseline-label">Baseline</span></figcaption></figure><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Wan/model_wan_background_ours.mp4" type="video/mp4"/></video><figcaption><span class="ours-label">Ours</span></figcaption></figure></div>
 </article>
 </div>
@@ -962,7 +925,7 @@ footer{
 <div class="pair"><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/CogVideoX/model_cogvideox_appearance_baseline.mp4" type="video/mp4"/></video><figcaption><span class="baseline-label">Baseline</span></figcaption></figure><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/CogVideoX/model_cogvideox_appearance_ours.mp4" type="video/mp4"/></video><figcaption><span class="ours-label">Ours</span></figcaption></figure></div>
 </article>
 <article class="card comparison-row reveal">
-<div class="comparison-label"><span class="num">06</span><div><h3>Background details</h3><p>Evaluates contextual elements and scene details beyond the primary objects.</p><div class="prompt-box"><strong>Prompt:</strong> A lemur eats grass leaves near low branches, holding the leaves with small hands while its striped tail curls behind it and <strong class="hl">sunlight falls through the foliage</strong>.</div></div></div>
+<div class="comparison-label"><span class="num">06</span><div><h3>Background details</h3><p>Evaluates whether prompt-specified background elements and environmental details surrounding the primary content are correctly realized.</p><div class="prompt-box"><strong>Prompt:</strong> A lemur eats grass leaves near low branches, holding the leaves with small hands while its striped tail curls behind it and <strong class="hl">sunlight falls through the foliage</strong>.</div></div></div>
 <div class="pair"><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/CogVideoX/model_cogvideox_background_baseline.mp4" type="video/mp4"/></video><figcaption><span class="baseline-label">Baseline</span></figcaption></figure><figure><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/CogVideoX/model_cogvideox_background_ours.mp4" type="video/mp4"/></video><figcaption><span class="ours-label">Ours</span></figcaption></figure></div>
 </article>
 </div>
@@ -970,7 +933,7 @@ footer{
 </section>
 <section class="section" id="more-results">
 <div class="section-head"> <h2>More Qualitative Results</h2>
-<p>Additional within-backbone comparisons across diverse content categories, using conventional inference and the same staged inference procedure.</p>
+<p>Additional within-backbone comparisons across diverse content categories, contrasting single-stage input-prompt inference with adaptive two-stage inference under the same prompt.</p>
 </div>
 <div class="model-block">
 <h3 class="model-heading">Wan2.2-5B · Additional Comparisons</h3>
@@ -1048,44 +1011,44 @@ footer{
 </div>
 </section>
 <section class="section" id="ablation">
-<div class="section-head"> <h2>Ablation Study</h2>
-<p>Visual sensitivity analysis isolates the effects of Sampling-Budget Reallocation, CRTG, timestep concentration, and the timing of the condition transition from c to p.</p>
+<div class="section-head"> <h2>Ablation and Parameter Sensitivity Analysis</h2>
+
 </div>
 <div class="ablation">
 <div class="ablation-top">
 <article class="card video-card reveal full-method">
-<div class="video tall"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/ablation_full_method.mp4" type="video/mp4"/></video></div>
-<div class="video-info"><span class="tag">Full framework</span><h3>Semantic-gap-adaptive staged inference</h3></div>
+<div class="video tall"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Ablation/Ours.mp4" type="video/mp4"/></video></div>
+<div class="video-info"><span class="tag">Full framework</span><h3>Adaptive Two-Stage Inference</h3><div class="prompt-box" style="min-height:3.2rem;"><strong>Prompt: A clown fish swims among sea anemone tentacles, with orange stripes, small fins, waving anemone arms, and coral textures around it.</strong>&nbsp;</div></div>
 </article>
 <div class="ablation-stack">
 <article class="card video-card reveal">
-<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/ablation_wo_sampling_reallocation.mp4" type="video/mp4"/></video></div>
+<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Ablation/wo_SBR.mp4" type="video/mp4"/></video></div>
 <div class="video-info"><span class="tag">Component removal</span><h3>w/o Sampling-Budget Reallocation</h3></div>
 </article>
 <article class="card video-card reveal">
-<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/ablation_wo_crtg.mp4" type="video/mp4"/></video></div>
-<div class="video-info"><span class="tag">Component removal</span><h3>w/o Coarse-to-Refined Transition Guidance</h3></div>
+<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Ablation/wo_CFTG.mp4" type="video/mp4"/></video></div>
+<div class="video-info"><span class="tag">Component removal</span><h3>w/o Coarse-to-Fine Transition Guidance</h3></div>
 </article>
 </div>
 </div>
 <div class="ablation-pair">
 <article class="card video-card reveal">
-<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/ablation_high_noise_concentrated.mp4" type="video/mp4"/></video></div>
+<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Ablation/Shift_Large.mp4" type="video/mp4"/></video></div>
 <div class="video-info"><span class="tag">Schedule sensitivity</span><h3>Sampling steps overly concentrated in the high-noise region</h3></div>
 </article>
 <article class="card video-card reveal">
-<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/ablation_low_noise_concentrated.mp4" type="video/mp4"/></video></div>
+<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Ablation/Shift_Small.mp4" type="video/mp4"/></video></div>
 <div class="video-info"><span class="tag">Schedule sensitivity</span><h3>Sampling steps overly concentrated in the low-noise region</h3></div>
 </article>
 </div>
 <div class="ablation-pair">
 <article class="card video-card reveal">
-<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/ablation_early_prompt_switch.mp4" type="video/mp4"/></video></div>
-<div class="video-info"><span class="tag">Transition sensitivity</span><h3>Condition transition from c to p too early</h3></div>
+<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Ablation/Switch_Early.mp4" type="video/mp4"/></video></div>
+<div class="video-info"><span class="tag">Transition sensitivity</span><h3>Switch from coarse textual proxy to input prompt too early</h3></div>
 </article>
 <article class="card video-card reveal">
-<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/ablation_late_prompt_switch.mp4" type="video/mp4"/></video></div>
-<div class="video-info"><span class="tag">Transition sensitivity</span><h3>Condition transition from c to p too late</h3></div>
+<div class="video"><video controls="" muted="" playsinline="" preload="metadata"><source src="assets/videos/Ablation/Switch_Late.mp4" type="video/mp4"/></video></div>
+<div class="video-info"><span class="tag">Transition sensitivity</span><h3>Switch from coarse textual proxy to input prompt too late</h3></div>
 </article>
 </div>
 </div>
